@@ -628,4 +628,81 @@ def main():
         
         with col_btn[3]:
             if st.button("🔄 重置", use_container_width=True):
-                st.session
+                st.session_state.running = False
+                st.session_state.hb.reset()
+                st.session_state.hist = []
+                st.rerun()
+        
+        with col_btn[4]:
+            if st.button("📡 手动刷新", use_container_width=True):
+                if st.session_state.running:
+                    st.session_state.hb.update(st.session_state.obs, st.session_state.safe_rad)
+                st.rerun()
+        
+        st.markdown("---")
+        
+        # 自动刷新逻辑
+        if st.session_state.running and auto_refresh:
+            current_time = time.time()
+            if current_time - st.session_state.last_time >= HEARTBEAT_INTERVAL:
+                st.session_state.hb.update(st.session_state.obs, st.session_state.safe_rad)
+                st.session_state.last_time = current_time
+                st.rerun()
+        
+        # 获取心跳数据
+        if st.session_state.hb.hist:
+            d = st.session_state.hb.hist[0]
+        else:
+            d = {"speed": 0, "progress": 0, "elapsed": 0, "remaining_distance": 0,
+                 "remain": "00:00", "battery": 0, "lng": 0, "lat": 0}
+        
+        total_waypoints = len(st.session_state.waypoints)
+        current_wp_num = int(d.get('progress', 0) * total_waypoints) + 1 if total_waypoints > 0 else 0
+        current_wp_num = min(current_wp_num, total_waypoints)
+        
+        # 显示状态
+        status_text = "飞行中" if st.session_state.running and not d.get('paused', False) else ("已暂停" if d.get('paused', False) else "已停止")
+        st.markdown(f"### 状态: {status_text}")
+        
+        st.markdown("### ✈️ 飞行进度")
+        st.progress(d.get('progress', 0), text=f"进度: {d.get('progress', 0)*100:.1f}%")
+        
+        st.markdown("### 📊 飞行数据")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("当前航点", f"{current_wp_num}/{total_waypoints}")
+        col2.metric("速度", f"{d.get('speed', 0)} m/s")
+        col3.metric("已用时间", f"{int(d.get('elapsed', 0)//60):02d}:{int(d.get('elapsed', 0)%60):02d}")
+        col4.metric("剩余距离", f"{d.get('remaining_distance', 0):.0f} m")
+        
+        col5, col6 = st.columns(2)
+        col5.metric("预计到达", d.get('remain', '00:00'))
+        col6.metric("电量", f"{d.get('battery', 0)}%")
+        
+        # 地图
+        st.markdown("### 🗺️ 飞行轨迹")
+        center = [d.get('lat', SCHOOL_CENTER[1]), d.get('lng', SCHOOL_CENTER[0])]
+        m = folium.Map(location=center, zoom_start=17)
+        folium.Marker(center, popup="无人机").add_to(m)
+        if st.session_state.full_path:
+            folium.PolyLine([[p[1], p[0]] for p in st.session_state.full_path], color='green').add_to(m)
+        folium_static(m, width=1000, height=400)
+        
+        st.info("💡 提示：勾选「自动刷新」后，页面会自动更新飞行数据")
+    
+    elif page == "障碍物":
+        st.header("🏗️ 障碍物管理")
+        st.info(f"当前障碍物数量: {len(st.session_state.obs)}")
+        
+        for i, obs in enumerate(st.session_state.obs):
+            col1, col2, col3 = st.columns([3, 1, 1])
+            col1.write(f"{obs.get('name', f'障碍物{i+1}')} - 高度: {obs.get('height', 20)}m")
+            if col3.button("删除", key=f"del_obs_{i}"):
+                st.session_state.obs.pop(i)
+                st.rerun()
+        
+        if st.button("清空所有障碍物"):
+            st.session_state.obs = []
+            st.rerun()
+
+if __name__ == "__main__":
+    main()
