@@ -467,7 +467,6 @@ def main():
                                                               st.session_state.alt,
                                                               st.session_state.safe_rad,
                                                               st.session_state.sel_strat)
-            st.rerun()
     
     if page == "规划":
         st.header("航线规划 - 多航点避障")
@@ -487,7 +486,6 @@ def main():
                 a_lng = st.number_input("经度", value=st.session_state.waypoints[0][0], format="%.6f", key="a_lng")
             if st.button("更新起点"):
                 st.session_state.waypoints[0] = [a_lng, a_lat]
-                st.rerun()
             
             # 中间航点
             st.markdown("**中间航点**")
@@ -497,7 +495,6 @@ def main():
                     col_wp[0].write(f"航点{i}: ({st.session_state.waypoints[i][0]:.6f}, {st.session_state.waypoints[i][1]:.6f})")
                     if col_wp[1].button("删除", key=f"del_wp_{i}"):
                         st.session_state.waypoints.pop(i)
-                        st.rerun()
             else:
                 st.write("暂无中间航点")
             
@@ -510,7 +507,6 @@ def main():
                 new_lat = st.number_input("纬度", value=st.session_state.new_wp_lat, format="%.6f", key="new_lat")
             if st.button("➕ 添加航点"):
                 st.session_state.waypoints.insert(-1, [new_lng, new_lat])
-                st.rerun()
             
             # 终点
             st.markdown("**终点**")
@@ -521,7 +517,6 @@ def main():
                 b_lng = st.number_input("经度", value=st.session_state.waypoints[-1][0], format="%.6f", key="b_lng")
             if st.button("更新终点"):
                 st.session_state.waypoints[-1] = [b_lng, b_lat]
-                st.rerun()
             
             st.markdown("---")
             
@@ -540,7 +535,6 @@ def main():
                                                                   st.session_state.alt,
                                                                   st.session_state.safe_rad,
                                                                   st.session_state.sel_strat)
-                    st.rerun()
                 else:
                     st.warning("请先在地图上画多边形")
             
@@ -551,7 +545,6 @@ def main():
                                                                   st.session_state.alt,
                                                                   st.session_state.safe_rad,
                                                                   st.session_state.sel_strat)
-                st.rerun()
             
             st.markdown("#### ✈️ 飞行控制")
             if st.button("▶️ 开始飞行"):
@@ -608,25 +601,21 @@ def main():
                         st.session_state.hb.set_path(st.session_state.full_path, st.session_state.alt, st.session_state.drone_spd)
                         st.session_state.running = True
                         st.session_state.auto_mode = True
-                        st.rerun()
                 else:
                     st.session_state.hb.do_resume()
                     st.session_state.auto_mode = True
-                    st.rerun()
         
         with col2:
             if st.button("⏸️ 暂停", use_container_width=True):
                 if st.session_state.running:
                     st.session_state.hb.do_pause()
                     st.session_state.auto_mode = False
-                    st.rerun()
         
         with col3:
             if st.button("⏹️ 停止", use_container_width=True):
                 st.session_state.running = False
                 st.session_state.auto_mode = False
                 st.session_state.hb.stop()
-                st.rerun()
         
         with col4:
             if st.button("🔄 重置", use_container_width=True):
@@ -634,13 +623,11 @@ def main():
                 st.session_state.auto_mode = False
                 st.session_state.hb.reset()
                 st.session_state.hist = []
-                st.rerun()
         
         st.markdown("---")
         
         # 自动飞行模式 - 每次刷新时更新位置
         if st.session_state.get('auto_mode', False) and st.session_state.running:
-            # 显示自动飞行状态
             st.info("🤖 自动飞行模式已开启 - 页面每0.3秒自动刷新")
             
             # 更新无人机位置
@@ -790,11 +777,15 @@ def main():
             col1.write(f"{obs.get('name', f'障碍物{i+1}')} - 高度: {obs.get('height', 20)}m")
             if col3.button("删除", key=f"del_obs_{i}"):
                 st.session_state.obs.pop(i)
-                st.rerun()
         
         if st.button("清空所有障碍物"):
             st.session_state.obs = []
-            st.rerun()
+        
+        if st.button("💾 保存到缓存"):
+            save_cache()
+        
+        if st.button("📂 从缓存加载"):
+            load_cache()
         
         # 显示障碍物地图
         st.markdown("### 🗺️ 障碍物分布图")
