@@ -10,6 +10,7 @@ import json
 import os
 from datetime import datetime
 import pandas as pd
+import threading
 
 # ==================== 配置常量 ====================
 SCHOOL_CENTER = [118.7490, 32.2340]
@@ -20,7 +21,7 @@ VEC_URL = "https://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&
 ATTR = "高德地图"
 CONFIG_FILE = "obstacle_config.json"
 BASE_SPEED_MPS = 5.0
-HEARTBEAT_INTERVAL = 0.3
+HEARTBEAT_INTERVAL = 0.5
 
 # ==================== 坐标转换 ====================
 def gcj2wgs(lng, lat):
@@ -432,7 +433,6 @@ def main():
     if 'hb' not in st.session_state: st.session_state.hb = HeartbeatSim(st.session_state.waypoints[0][:])
     if 'last_time' not in st.session_state: st.session_state.last_time = time.time()
     if 'running' not in st.session_state: st.session_state.running = False
-    if 'auto_mode' not in st.session_state: st.session_state.auto_mode = False
     if 'alt' not in st.session_state: st.session_state.alt = 50
     if 'hist' not in st.session_state: st.session_state.hist = []
     if 'full_path' not in st.session_state: st.session_state.full_path = None
@@ -443,6 +443,7 @@ def main():
     if 'sel_strat' not in st.session_state: st.session_state.sel_strat = 'best'
     if 'new_wp_lng' not in st.session_state: st.session_state.new_wp_lng = A_DFT[0]
     if 'new_wp_lat' not in st.session_state: st.session_state.new_wp_lat = A_DFT[1]
+    if 'update_counter' not in st.session_state: st.session_state.update_counter = 0
     
     with st.sidebar:
         st.header("控制面板")
@@ -558,7 +559,6 @@ def main():
             
             if st.button("⏹️ 停止飞行"):
                 st.session_state.running = False
-                st.session_state.auto_mode = False
                 st.session_state.hb.stop()
             
             st.caption(f"航线共{len(st.session_state.waypoints)}个航点")
@@ -600,57 +600,45 @@ def main():
                     else:
                         st.session_state.hb.set_path(st.session_state.full_path, st.session_state.alt, st.session_state.drone_spd)
                         st.session_state.running = True
-                        st.session_state.auto_mode = True
                 else:
                     st.session_state.hb.do_resume()
-                    st.session_state.auto_mode = True
         
         with col2:
             if st.button("⏸️ 暂停", use_container_width=True):
                 if st.session_state.running:
                     st.session_state.hb.do_pause()
-                    st.session_state.auto_mode = False
         
         with col3:
             if st.button("⏹️ 停止", use_container_width=True):
                 st.session_state.running = False
-                st.session_state.auto_mode = False
                 st.session_state.hb.stop()
         
         with col4:
             if st.button("🔄 重置", use_container_width=True):
                 st.session_state.running = False
-                st.session_state.auto_mode = False
                 st.session_state.hb.reset()
                 st.session_state.hist = []
         
         st.markdown("---")
         
-        # 自动飞行模式 - 每次刷新时更新位置
-        if st.session_state.get('auto_mode', False) and st.session_state.running:
-            st.info("🤖 自动飞行模式已开启 - 页面每0.3秒自动刷新")
-            
-            # 更新无人机位置
+        # 自动更新逻辑 - 使用 session_state 计数器触发刷新
+        if st.session_state.running and not st.session_state.hb.is_paused:
+            # 每隔 HEARTBEAT_INTERVAL 秒更新一次位置
             current_time = time.time()
             if current_time - st.session_state.last_time >= HEARTBEAT_INTERVAL:
-                new_hb = st.session_state.hb.update(st.session_state.obs, st.session_state.safe_rad)
+                st.session_state.hb.update(st.session_state.obs, st.session_state.safe_rad)
                 st.session_state.last_time = current_time
-                st.session_state.hist.append([new_hb['lng'], new_hb['lat']])
-                if len(st.session_state.hist) > 200:
-                    st.session_state.hist.pop(0)
-                
-                if new_hb['arrived']:
-                    st.session_state.running = False
-                    st.session_state.auto_mode = False
-                    st.success("🏁 无人机已安全到达目的地！")
-            
-            # 自动刷新页面
-            st.markdown('<meta http-equiv="refresh" content="0.3">', unsafe_allow_html=True)
-        else:
-            if st.session_state.running:
-                st.info("⏸️ 飞行已暂停，点击「开始/继续」恢复自动飞行")
-            else:
-                st.info("💡 提示：点击「开始/继续」启动自动飞行")
+                if st.session_state.hb.hist:
+                    d = st.session_state.hb.hist[0]
+                    st.session_state.hist.append([d['lng'], d['lat']])
+                    if len(st.session_state.hist) > 200:
+                        st.session_state.hist.pop(0)
+                    if d['arrived']:
+                        st.session_state.running = False
+                        st.success("🏁 无人机已安全到达目的地！")
+                st.session_state.update_counter += 1
+                time.sleep(0.1)
+                st.rerun()
         
         # 获取最新心跳数据
         if st.session_state.hb.hist:
@@ -767,6 +755,14 @@ def main():
                 "进度": f"{h['progress']*100:.1f}%"
             } for h in st.session_state.hb.hist[:10]])
             st.dataframe(log_df, use_container_width=True)
+        
+        # 显示更新计数（调试用）
+        if st.session_state.running and not d.get('paused', False):
+            st.info(f"🔄 自动飞行中... 更新次数: {st.session_state.update_counter}")
+        elif st.session_state.running:
+            st.info("⏸️ 飞行已暂停")
+        else:
+            st.info("💡 提示：点击「开始/继续」启动自动飞行")
     
     elif page == "障碍物":
         st.header("🏗️ 障碍物管理")
